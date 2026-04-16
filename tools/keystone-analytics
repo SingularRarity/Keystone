@@ -1,0 +1,191 @@
+#!/usr/bin/env node
+
+// Keystone Analytics
+// Tracks and analyzes local session usage stats
+
+const fs = require('fs');
+const path = require('path');
+const os = require('os');
+
+class KeystoneAnalytics {
+  constructor() {
+    this.statsFile = path.join(os.homedir(), '.keystone', 'analytics.json');
+    this.ensureStatsFile();
+  }
+
+  ensureStatsFile() {
+    const dir = path.dirname(this.statsFile);
+    if (!fs.existsSync(dir)) {
+      fs.mkdirSync(dir, { recursive: true });
+    }
+
+    if (!fs.existsSync(this.statsFile)) {
+      const initialStats = {
+        sessions: [],
+        skills: {},
+        totalTokens: 0,
+        created: new Date().toISOString(),
+        version: '1.0'
+      };
+      fs.writeFileSync(this.statsFile, JSON.stringify(initialStats, null, 2));
+    }
+  }
+
+  // Record a session
+  recordSession(sessionData) {
+    const stats = this.loadStats();
+
+    const session = {
+      id: Date.now().toString(),
+      timestamp: new Date().toISOString(),
+      duration: sessionData.duration || 0,
+      skills: sessionData.skills || [],
+      tokens: sessionData.tokens || 0,
+      commands: sessionData.commands || [],
+      host: sessionData.host || 'unknown'
+    };
+
+    stats.sessions.push(session);
+    stats.totalTokens += session.tokens;
+
+    // Update skill usage
+    session.skills.forEach(skill => {
+      stats.skills[skill] = (stats.skills[skill] || 0) + 1;
+    });
+
+    this.saveStats(stats);
+    console.log(`Session recorded: ${session.id}`);
+  }
+
+  // Get usage summary
+  getSummary() {
+    const stats = this.loadStats();
+
+    const totalSessions = stats.sessions.length;
+    const totalDuration = stats.sessions.reduce((sum, s) => sum + s.duration, 0);
+    const avgSessionTime = totalSessions > 0 ? totalDuration / totalSessions : 0;
+
+    const skillUsage = Object.entries(stats.skills)
+      .sort(([,a], [,b]) => b - a)
+      .slice(0, 5);
+
+    return {
+      totalSessions,
+      totalTokens: stats.totalTokens,
+      averageSessionTime: Math.round(avgSessionTime),
+      topSkills: skillUsage,
+      created: stats.created
+    };
+  }
+
+  // Show usage report
+  showReport() {
+    const summary = this.getSummary();
+
+    console.log('=== KEYSTONE USAGE REPORT ===');
+    console.log(`Total Sessions: ${summary.totalSessions}`);
+    console.log(`Total Tokens: ${summary.totalTokens.toLocaleString()}`);
+    console.log(`Average Session Time: ${summary.averageSessionTime} minutes`);
+    console.log(`Analytics Since: ${new Date(summary.created).toLocaleDateString()}`);
+    console.log('\nTop Skills:');
+    summary.topSkills.forEach(([skill, count]) => {
+      console.log(`  ${skill}: ${count} uses`);
+    });
+  }
+
+  // Export stats to CSV
+  exportCSV(filePath) {
+    const stats = this.loadStats();
+    const csvLines = ['Session ID,Timestamp,Duration (min),Tokens,Skills,Host'];
+
+    stats.sessions.forEach(session => {
+      const skillsStr = session.skills.join(';');
+      csvLines.push(`${session.id},${session.timestamp},${session.duration},${session.tokens},"${skillsStr}",${session.host}`);
+    });
+
+    fs.writeFileSync(filePath, csvLines.join('\n'));
+    console.log(`Analytics exported to: ${filePath}`);
+  }
+
+  // Clear all stats
+  clearStats() {
+    const initialStats = {
+      sessions: [],
+      skills: {},
+      totalTokens: 0,
+      created: new Date().toISOString(),
+      version: '1.0'
+    };
+    this.saveStats(initialStats);
+    console.log('Analytics cleared');
+  }
+
+  loadStats() {
+    try {
+      return JSON.parse(fs.readFileSync(this.statsFile, 'utf8'));
+    } catch (error) {
+      console.error('Error loading stats:', error.message);
+      return { sessions: [], skills: {}, totalTokens: 0 };
+    }
+  }
+
+  saveStats(stats) {
+    try {
+      fs.writeFileSync(this.statsFile, JSON.stringify(stats, null, 2));
+    } catch (error) {
+      console.error('Error saving stats:', error.message);
+    }
+  }
+}
+
+// CLI interface
+function main() {
+  const args = process.argv.slice(2);
+  const analytics = new KeystoneAnalytics();
+
+  if (args.length === 0) {
+    analytics.showReport();
+    return;
+  }
+
+  const command = args[0];
+
+  switch (command) {
+    case 'report':
+      analytics.showReport();
+      break;
+    case 'export':
+      const exportPath = args[1] || 'keystone-analytics.csv';
+      analytics.exportCSV(exportPath);
+      break;
+    case 'clear':
+      analytics.clearStats();
+      break;
+    case 'record':
+      // Example: record session with dummy data
+      const sessionData = {
+        duration: 45,
+        skills: ['keystone-req', 'keystone-hld'],
+        tokens: 2500,
+        commands: ['/keystone-req', '/keystone-hld'],
+        host: 'kilo'
+      };
+      analytics.recordSession(sessionData);
+      break;
+    default:
+      console.log('Keystone Analytics');
+      console.log('Usage:');
+      console.log('  keystone-analytics                 # Show usage report');
+      console.log('  keystone-analytics report          # Show usage report');
+      console.log('  keystone-analytics export [file]   # Export to CSV');
+      console.log('  keystone-analytics clear           # Clear all stats');
+      console.log('  keystone-analytics record          # Record example session');
+      break;
+  }
+}
+
+if (require.main === module) {
+  main();
+}
+
+module.exports = KeystoneAnalytics;

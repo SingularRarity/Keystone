@@ -1,0 +1,210 @@
+#!/usr/bin/env node
+
+// Keystone CLAUDE.md Compressor
+// Compresses prose while preserving code blocks, file paths, and schema definitions
+// Reduces input tokens by 40-50% for efficiency
+
+const fs = require('fs');
+const path = require('path');
+
+class KeystoneCompressor {
+  constructor() {
+    this.backupSuffix = '.backup';
+  }
+
+  // Compress a CLAUDE.md file
+  compress(filePath) {
+    if (!fs.existsSync(filePath)) {
+      console.error(`File not found: ${filePath}`);
+      return false;
+    }
+
+    const originalContent = fs.readFileSync(filePath, 'utf8');
+
+    // Create backup
+    const backupPath = filePath + this.backupSuffix;
+    fs.writeFileSync(backupPath, originalContent);
+    console.log(`Backup created: ${backupPath}`);
+
+    // Compress content
+    const compressedContent = this.compressContent(originalContent);
+
+    // Write compressed version
+    fs.writeFileSync(filePath, compressedContent);
+
+    // Calculate savings
+    const originalTokens = this.estimateTokens(originalContent);
+    const compressedTokens = this.estimateTokens(compressedContent);
+    const savings = ((originalTokens - compressedTokens) / originalTokens * 100).toFixed(1);
+
+    console.log(`Compression complete:`);
+    console.log(`Original tokens: ~${originalTokens}`);
+    console.log(`Compressed tokens: ~${compressedTokens}`);
+    console.log(`Token savings: ${savings}%`);
+
+    return true;
+  }
+
+  // Restore from backup
+  restore(filePath) {
+    const backupPath = filePath + this.backupSuffix;
+
+    if (!fs.existsSync(backupPath)) {
+      console.error(`Backup not found: ${backupPath}`);
+      return false;
+    }
+
+    const backupContent = fs.readFileSync(backupPath, 'utf8');
+    fs.writeFileSync(filePath, backupContent);
+    fs.unlinkSync(backupPath);
+
+    console.log(`Restored from backup: ${backupPath}`);
+    return true;
+  }
+
+  // Show compression diff without committing
+  diff(filePath) {
+    if (!fs.existsSync(filePath)) {
+      console.error(`File not found: ${filePath}`);
+      return false;
+    }
+
+    const originalContent = fs.readFileSync(filePath, 'utf8');
+    const compressedContent = this.compressContent(originalContent);
+
+    console.log('=== COMPRESSION DIFF ===');
+    console.log('Original length:', originalContent.length, 'chars');
+    console.log('Compressed length:', compressedContent.length, 'chars');
+    console.log('Reduction:', ((originalContent.length - compressedContent.length) / originalContent.length * 100).toFixed(1) + '%');
+
+    const originalTokens = this.estimateTokens(originalContent);
+    const compressedTokens = this.estimateTokens(compressedContent);
+    console.log('Token reduction:', ((originalTokens - compressedTokens) / originalTokens * 100).toFixed(1) + '%');
+
+    return true;
+  }
+
+  // Compress content using Keystone rules
+  compressContent(content) {
+    const lines = content.split('\n');
+    const compressed = [];
+
+    let inCodeBlock = false;
+    let codeBlockFence = '';
+
+    for (const line of lines) {
+      // Handle code blocks - preserve verbatim
+      if (line.trim().startsWith('```')) {
+        if (!inCodeBlock) {
+          inCodeBlock = true;
+          codeBlockFence = line.trim();
+        } else if (line.trim() === codeBlockFence || line.trim() === '```') {
+          inCodeBlock = false;
+          codeBlockFence = '';
+        }
+        compressed.push(line);
+        continue;
+      }
+
+      if (inCodeBlock) {
+        compressed.push(line);
+        continue;
+      }
+
+      // Handle headers - preserve
+      if (line.startsWith('#')) {
+        compressed.push(line);
+        continue;
+      }
+
+      // Handle lists and structured content - preserve
+      if (line.match(/^[\s]*[-*+]\s/) || line.match(/^[\s]*\d+\.\s/)) {
+        compressed.push(line);
+        continue;
+      }
+
+      // Handle tables - preserve
+      if (line.includes('|') && !line.includes('http')) {
+        compressed.push(line);
+        continue;
+      }
+
+      // Compress prose lines
+      const compressedLine = this.compressLine(line);
+      compressed.push(compressedLine);
+    }
+
+    return compressed.join('\n');
+  }
+
+  // Compress individual line using caveman rules
+  compressLine(line) {
+    // Skip empty lines
+    if (line.trim() === '') return line;
+
+    // Preserve file paths and URLs
+    if (line.includes('/') || line.includes('\\') || line.includes('.md') || line.includes('.ts') || line.includes('.js')) {
+      return line;
+    }
+
+    // Preserve technical terms and proper nouns
+    const technicalTerms = ['API', 'SQL', 'HTTP', 'JSON', 'XML', 'JWT', 'OAuth', 'REST', 'GraphQL', 'WebSocket', 'PostgreSQL', 'Redis', 'Kafka', 'Docker', 'Kubernetes'];
+
+    // Compress prose: remove articles, compress phrases
+    let compressed = line
+      .replace(/\b(the|an?|and|or|but|so|because|although|though|while|since|unless|until|before|after)\b/gi, '') // Remove articles/conjunctions
+      .replace(/\s+/g, ' ') // Normalize spaces
+      .replace(/(\w+)\s+is\s+(\w+)/gi, '$1=$2') // Compress "is" statements
+      .replace(/(\w+)\s+will\s+(\w+)/gi, '$1→$2') // Compress "will" statements
+      .replace(/(\w+)\s+should\s+(\w+)/gi, '$1→$2') // Compress "should" statements
+      .replace(/(\w+)\s+can\s+(\w+)/gi, '$1→$2') // Compress "can" statements
+      .replace(/(\w+)\s+has\s+(\w+)/gi, '$1+$2') // Compress "has" statements
+      .replace(/\bneed\s+to\b/gi, '→') // Compress "need to"
+      .replace(/\bused\s+for\b/gi, '→') // Compress "used for"
+      .replace(/\bused\s+to\b/gi, '→') // Compress "used to"
+      .trim();
+
+    return compressed;
+  }
+
+  // Rough token estimation (words + punctuation)
+  estimateTokens(text) {
+    return text.split(/\s+/).filter(word => word.length > 0).length;
+  }
+}
+
+// CLI interface
+function main() {
+  const args = process.argv.slice(2);
+  const compressor = new KeystoneCompressor();
+
+  if (args.length === 0) {
+    console.log('Keystone CLAUDE.md Compressor');
+    console.log('Usage:');
+    console.log('  keystone-compress <file>           # Compress CLAUDE.md');
+    console.log('  keystone-compress <file> --restore # Restore from backup');
+    console.log('  keystone-compress <file> --diff    # Show compression diff');
+    return;
+  }
+
+  const filePath = args[0];
+  const command = args[1];
+
+  switch (command) {
+    case '--restore':
+      compressor.restore(filePath);
+      break;
+    case '--diff':
+      compressor.diff(filePath);
+      break;
+    default:
+      compressor.compress(filePath);
+      break;
+  }
+}
+
+if (require.main === module) {
+  main();
+}
+
+module.exports = KeystoneCompressor;

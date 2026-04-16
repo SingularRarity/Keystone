@@ -1,0 +1,56 @@
+#!/usr/bin/env bash
+# Keystone setup script for OSS tier
+# Detects host and symlinks skills accordingly
+
+echo "Setting up Keystone (OSS tier)..."
+
+# Determine the host CLI
+if command -v claude &> /dev/null; then
+  HOST="claude"
+elif command -v kilo &> /dev/null; then
+  HOST="kilo"
+elif command -v gemini &> /dev/null; then
+  HOST="gemini"
+else
+  echo "Error: No supported host CLI found (Claude Code, Kilo Code, or Gemini CLI)"
+  exit 1
+fi
+
+echo "Detected host: $HOST"
+
+# Create skills directory if it doesn't exist
+SKILLS_DIR="$HOME/.claude/skills/keystone"
+mkdir -p "$SKILLS_DIR"
+
+# Copy skill files
+cp -r skills/* "$SKILLS_DIR/"
+
+# Copy tools
+mkdir -p "$SKILLS_DIR/tools"
+cp -r tools/* "$SKILLS_DIR/tools/" 2>/dev/null || true
+
+# Copy adapters
+mkdir -p "$SKILLS_DIR/adapters"
+cp -r adapters/* "$SKILLS_DIR/adapters/" 2>/dev/null || true
+
+# Create decisions directory
+mkdir -p "$SKILLS_DIR/decisions"
+
+# Create CLAUDE.md
+cp CLAUDE.md "$SKILLS_DIR/"
+
+# Create ARCHITECTURE.md, ETHOS.md, etc.
+cp ARCHITECTURE.md "$SKILLS_DIR/" 2>/dev/null || true
+cp ETHOS.md "$SKILLS_DIR/" 2>/dev/null || true
+cp CONTRIBUTING.md "$SKILLS_DIR/" 2>/dev/null || true
+cp CHANGELOG.md "$SKILLS_DIR/" 2>/dev/null || true
+cp LICENSE "$SKILLS_DIR/" 2>/dev/null || true
+
+# Run TypeScript setup if available
+if [ -f "setup.ts" ]; then
+  echo "Running TypeScript host detection..."
+  npx tsx setup.ts
+fi
+
+echo "Keystone OSS tier setup complete!"
+echo "Run '/keystone-req --help' to get started."
