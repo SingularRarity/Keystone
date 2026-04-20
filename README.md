@@ -38,6 +38,15 @@ git clone https://github.com/singularrarity/keystone-pro.git ~/.claude/skills/ke
   && cd ~/.claude/skills/keystone-pro && ./setup-pro
 ```
 
+## Demo
+
+> `/keystone-run` on a real-time payments platform — requirements, 
+> estimation, architecture diagram, and ADR in one session.
+
+[![Keystone Demo](https://img.youtube.com/vi/_OKl3gJK2ZQ/maxresdefault.jpg)](https://youtu.be/_OKl3gJK2ZQ)
+
+*Click to watch the full 10-minute demo on YouTube.*
+
 ## Usage
 
 Run `/keystone-req --help` to get started.
