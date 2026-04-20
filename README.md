@@ -1,4 +1,5 @@
 # Keystone
+![alt text](media/banner1.png)
 
 The system design operating system for Claude Code.
 
